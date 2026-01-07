@@ -9,43 +9,84 @@ import numpy as np
 
 
 class ReplayBuffer(object):
-    def __init__(self, buffer_size, random_seed=123):
+    def __init__(self, buffer_size, n_state, n_action):
         """
         The right side of the deque contains the most recent experiences
         """
         self.buffer_size = buffer_size
-        self.count = 0
-        self.buffer = deque()
-        random.seed(random_seed)
+        self.n_state = n_state
+        self.n_action = n_action
+        self.cursor = 0
+        self.full = False
 
-    def add(self, s, a, r, t, s2):
-        experience = (s, a, r, t, s2)
-        if self.count < self.buffer_size:
-            self.buffer.append(experience)
-            self.count += 1
-        else:
-            self.buffer.popleft()
-            self.buffer.append(experience)
+        self.states = np.zeros((buffer_size, n_state), dtype=np.float32)
+        self.actions = np.zeros((buffer_size, n_action), dtype=np.float32)
+        self.rewards = np.zeros(buffer_size, dtype=np.float32)
+        self.dones = np.zeros(buffer_size, dtype=np.bool_)
 
+
+    def add(self, state, action, reward, done_bool):
+        self.states[self.cursor] = state
+        self.actions[self.cursor] = action
+        self.rewards[self.cursor] = reward
+        self.dones[self.cursor] = done_bool
+
+        self.cursor += 1
+        if self.cursor >= self.buffer_size:
+            self.cursor = 0
+            self.full = True
+
+    @property
     def size(self):
-        return self.count
+        return self.buffer_size if self.full else self.cursor
 
-    def sample_batch(self, batch_size):
-        batch = []
+    def sample_batch(self, batch_size, hist_size):
+        assert self.size > 0, "Replay memory is empty"
+        assert hist_size >= 1, "History size must be >= 1"
 
-        if self.count < batch_size:
-            batch = random.sample(self.buffer, self.count)
-        else:
-            batch = random.sample(self.buffer, batch_size)
+        idx = np.zeros(batch_size, dtype=np.int32)
+        count = 0
 
-        s_batch = np.array([_[0] for _ in batch])
-        a_batch = np.array([_[1] for _ in batch])
-        r_batch = np.array([_[2] for _ in batch]).reshape(-1, 1)
-        t_batch = np.array([_[3] for _ in batch]).reshape(-1, 1)
-        s2_batch = np.array([_[4] for _ in batch])
+        while count < batch_size:
 
-        return s_batch, a_batch, r_batch, t_batch, s2_batch
+            #index是s_t的索引
+            index = np.random.randint(hist_size - 1, self.size - 1)
 
-    def clear(self):
-        self.buffer.clear()
-        self.count = 0
+            #检查光标是否越界
+            if self.cursor <= index + 1 < self.cursor + hist_size:
+                continue
+
+            #s_t不能包含中间终止状态
+            if np.any(self.dones[index - (hist_size - 1):index]):
+                continue
+
+            #防止负索引
+            if index - (hist_size - 1) < 0:
+                continue
+
+            idx[count] = index
+            count += 1
+
+        all_indices = idx.reshape(-1, 1) + np.arange(-(hist_size - 1), 2)
+        states = self.states[all_indices]
+        actions = self.actions[all_indices[:, :-1]]
+        rewards = self.rewards[all_indices[:, :-1]]
+        dones = self.dones[all_indices[:, :-1]]
+
+        # 检查 batch 大小
+        assert idx.shape == (batch_size,)
+        assert states.shape == (batch_size, hist_size + 1, self.n_state)
+        assert actions.shape == (batch_size, hist_size, self.n_action)
+        assert rewards.shape == (batch_size, hist_size)
+        assert dones.shape == (batch_size, hist_size)
+
+        return dict(
+            states=states,
+            actions=actions,
+            rewards=rewards,
+            dones=dones
+        )
+
+    def empty(self):
+        self.cursor = 0
+        self.full = False
