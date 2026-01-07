@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from numpy import inf
 from torch.utils.tensorboard import SummaryWriter
+from collections import deque
 
 from replay_buffer import ReplayBuffer
 from velodyne_env import GazeboEnv
@@ -86,6 +87,45 @@ class Critic(nn.Module):
         q2 = self.layer_6(s2)
         return q1, q2
 
+class GRUEncoder(nn.Module):
+    def __init__(self, state_dim, hidden_dim):
+        super(GRUEncoder, self).__init__()
+        self.hidden_dim = hidden_dim
+
+        self.gru = nn.GRU(
+            input_size=state_dim,
+            hidden_size=hidden_dim,
+            batch_first=True
+        )
+        #生成高斯参数
+        self.mu_layer = nn.Linear(hidden_dim, hidden_dim)
+        self.log_std_layer = nn.Linear(hidden_dim, hidden_dim)
+        self.log_std_min = -20
+        self.log_std_max = 2
+
+    def forward(self, history, o_t, h_t):
+        #把当前o_t拼到history后
+        o_t = o_t.unsqueeze(1)
+        seq = torch.cat([history, o_t], 1)
+
+        #GRU更新
+        out, h_next = self.gru(seq, h_t)
+
+        #最后时间步
+        h_last = out[:, -1, :]
+
+        #高斯分布参数
+        mu = self.mu_layer(h_last)
+        log_std = self.log_std_layer(h_last).clamp(self.log_std_min, self.log_std_max)
+        std = torch.exp(log_std)
+
+        #取均值作为 state_new
+        state_new = mu
+
+        return state_new, h_next
+
+    def init_hidden(self, batch_size, device):
+        return torch.zeros(1, batch_size, self.hidden_dim).to(device)
 
 # TD3 network
 class TD3(object):
@@ -234,7 +274,7 @@ tau = 0.005  # Soft target update variable (should be close to 0)
 policy_noise = 0.2  # Added noise for exploration
 noise_clip = 0.5  # Maximum clamping values of the noise
 policy_freq = 2  # Frequency of Actor network updates
-buffer_size = 1e6  # Maximum size of the buffer
+buffer_size = int(1e6)  # Maximum size of the buffer
 file_name = "TD3_velodyne"  # name of the file to store the policy
 save_model = True  # Weather to save the model or not
 load_model = False  # Weather to load a stored model
@@ -260,7 +300,7 @@ max_action = 1
 # Create the network
 network = TD3(state_dim, action_dim, max_action)
 # Create a replay buffer
-replay_buffer = ReplayBuffer(buffer_size, seed)
+replay_buffer = ReplayBuffer(buffer_size, n_state=state_dim, n_action=action_dim)
 if load_model:
     try:
         network.load(file_name, "./pytorch_models")
@@ -280,6 +320,12 @@ epoch = 1
 
 count_rand_actions = 0
 random_action = []
+
+hidden_dim = 64
+hist_size = 10
+gru_encoder = GRUEncoder(state_dim, hidden_dim).to(device)
+h_t = gru_encoder.init_hidden(batch_size=1, device=device)
+history = deque(maxlen=hist_size)
 
 # Begin the training loop
 while timestep < max_timesteps:
@@ -308,6 +354,9 @@ while timestep < max_timesteps:
             np.save("./results/%s" % (file_name), evaluations)
             epoch += 1
 
+        h_t = gru_encoder.init_hidden(batch_size=1, device=device)
+        history.clear()
+
         state = env.reset()
         done = False
 
@@ -319,7 +368,18 @@ while timestep < max_timesteps:
     if expl_noise > expl_min:
         expl_noise = expl_noise - ((1 - expl_min) / expl_decay_steps)
 
-    action = network.get_action(np.array(state))
+    # GRU
+    if replay_buffer.size >= hist_size:
+        batch = replay_buffer.sample_batch(batch_size=1, hist_size=hist_size)
+        history_tensor = torch.FloatTensor(batch['states'][:, :-1, :]).to(device)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+    else:
+        history_tensor = torch.FloatTensor(list(history)).unsqueeze(0).to(device)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+    state_new, h_t = gru_encoder.forward(history_tensor, state_tensor, h_t)
+    h_t = h_t.detach()  # 避免梯度累积太长
+
+    action = network.get_action(state_new.cpu().data.numpy().flatten())
     action = (action + np.random.normal(0, expl_noise, size=action_dim)).clip(
         -max_action, max_action
     )
@@ -349,7 +409,8 @@ while timestep < max_timesteps:
     episode_reward += reward
 
     # Save the tuple in replay buffer
-    replay_buffer.add(state, action, reward, done_bool, next_state)
+    replay_buffer.add(state, action, reward, done_bool)
+    history.append(state)
 
     # Update the counters
     state = next_state
