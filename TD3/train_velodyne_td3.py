@@ -97,32 +97,18 @@ class GRUEncoder(nn.Module):
             hidden_size=hidden_dim,
             batch_first=True
         )
-        #生成高斯参数
-        self.mu_layer = nn.Linear(hidden_dim, hidden_dim)
-        self.log_std_layer = nn.Linear(hidden_dim, hidden_dim)
-        self.log_std_min = -20
-        self.log_std_max = 2
 
-    def forward(self, history, o_t, h_t):
+    def forward(self, o_t, h_t):
         #把当前o_t拼到history后
         o_t = o_t.unsqueeze(1)
-        seq = torch.cat([history, o_t], 1)
 
         #GRU更新
-        out, h_next = self.gru(seq, h_t)
+        out, h_next = self.gru(o_t, h_t)
 
         #最后时间步
-        h_last = out[:, -1, :]
+        out_t = out[:, -1, :]
 
-        #高斯分布参数
-        mu = self.mu_layer(h_last)
-        log_std = self.log_std_layer(h_last).clamp(self.log_std_min, self.log_std_max)
-        std = torch.exp(log_std)
-
-        #取均值作为 state_new
-        state_new = mu
-
-        return state_new, h_next
+        return out_t, h_next
 
     def init_hidden(self, batch_size, device):
         return torch.zeros(1, batch_size, self.hidden_dim).to(device)
@@ -145,11 +131,20 @@ class TD3(object):
         self.max_action = max_action
         self.writer = SummaryWriter()
         self.iter_count = 0
+        self.gru = gru_encoder
+        self.h_t = None
 
-    def get_action(self, state):
-        # Function to get the action from the actor
-        state = torch.Tensor(state.reshape(1, -1)).to(device)
-        return self.actor(state).cpu().data.numpy().flatten()
+    def get_action(self, obs):
+        obs = torch.FloatTensor(obs).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            if self.h_t is None:
+                self.h_t = self.gru.init_hidden(1, obs.device)
+
+            gru_out, self.h_t = self.gru(obs, self.h_t)
+            action = self.actor(gru_out)
+
+        return action.cpu().numpy().flatten()
 
     # training cycle
     def train(
@@ -169,23 +164,36 @@ class TD3(object):
         for it in range(iterations):
             # sample a batch from the replay buffer
             (
-                batch_states,
-                batch_actions,
-                batch_rewards,
-                batch_dones,
-                batch_next_states,
-            ) = replay_buffer.sample_batch(batch_size)
-            state = torch.Tensor(batch_states).to(device)
-            next_state = torch.Tensor(batch_next_states).to(device)
-            action = torch.Tensor(batch_actions).to(device)
-            reward = torch.Tensor(batch_rewards).to(device)
-            done = torch.Tensor(batch_dones).to(device)
+                o_t,
+                actions,
+                rewards,
+                dones,
+            ) = replay_buffer.get_latest_episode()
+            o_t = o_t.to(device)
+            actions = actions.to(device)
+            rewards = rewards.to(device)
+            dones = dones.to(device)
+            action = actions[:, -1]
+            reward = rewards[:, -1].unsqueeze(1)
+            done = dones[:, -1].unsqueeze(1)
+
+            #GRU
+            h_0 = gru_encoder.init_hidden(o_t.size(0), device)
+            h_t = h_0
+            for t in range(max_ep-1):
+                out, h_t = gru_encoder.forward(o_t[:, t], h_t.detach())
+            state = out.detach()
+
+            h_t = h_0
+            for t in range(1, max_ep):
+                out, h_t = gru_encoder.forward(o_t[:, t], h_t.detach())
+            next_state = out.detach()
 
             # Obtain the estimated action from the next state by using the actor-target
             next_action = self.actor_target(next_state)
 
             # Add noise to the action
-            noise = torch.Tensor(batch_actions).data.normal_(0, policy_noise).to(device)
+            noise = torch.randn_like(next_action) * policy_noise
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (next_action + noise).clamp(-self.max_action, self.max_action)
 
@@ -258,9 +266,10 @@ class TD3(object):
 
 # Set the parameters for the implementation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
+print("device:",device)
 seed = 0  # Random seed number
 eval_freq = 5e3  # After how many steps to perform the evaluation
-max_ep = 500  # maximum number of steps per episode
+max_ep = 100  # maximum number of steps per episode
 eval_ep = 10  # number of episodes for evaluation
 max_timesteps = 5e6  # Maximum number of steps to perform
 expl_noise = 1  # Initial exploration noise starting value in range [expl_min ... 1]
@@ -296,11 +305,18 @@ np.random.seed(seed)
 state_dim = environment_dim + robot_dim
 action_dim = 2
 max_action = 1
+gru_dim = 64
+
+# Create the GRU date
+hidden_dim = 64
+hist_size = 10
+gru_encoder = GRUEncoder(state_dim, hidden_dim).to(device)
+h_t = gru_encoder.init_hidden(batch_size=1, device=device)
 
 # Create the network
-network = TD3(state_dim, action_dim, max_action)
+network = TD3(gru_dim, action_dim, max_action)
 # Create a replay buffer
-replay_buffer = ReplayBuffer(buffer_size, n_state=state_dim, n_action=action_dim)
+replay_buffer = ReplayBuffer(buffer_size, n_state=state_dim, n_action=action_dim, max_ep=max_ep)
 if load_model:
     try:
         network.load(file_name, "./pytorch_models")
@@ -321,21 +337,18 @@ epoch = 1
 count_rand_actions = 0
 random_action = []
 
-hidden_dim = 64
-hist_size = 10
-gru_encoder = GRUEncoder(state_dim, hidden_dim).to(device)
-h_t = gru_encoder.init_hidden(batch_size=1, device=device)
-history = deque(maxlen=hist_size)
 
 # Begin the training loop
 while timestep < max_timesteps:
 
     # On termination of episode
     if done:
+        network.h_t = network.gru.init_hidden(batch_size=1, device=device)
         if timestep != 0:
+            replay_buffer.end_episode()
             network.train(
                 replay_buffer,
-                episode_timesteps,
+                1,
                 batch_size,
                 discount,
                 tau,
@@ -354,11 +367,9 @@ while timestep < max_timesteps:
             np.save("./results/%s" % (file_name), evaluations)
             epoch += 1
 
-        h_t = gru_encoder.init_hidden(batch_size=1, device=device)
-        history.clear()
-
         state = env.reset()
         done = False
+        network.h_t = network.gru.init_hidden(batch_size=1, device=device)
 
         episode_reward = 0
         episode_timesteps = 0
@@ -368,18 +379,7 @@ while timestep < max_timesteps:
     if expl_noise > expl_min:
         expl_noise = expl_noise - ((1 - expl_min) / expl_decay_steps)
 
-    # GRU
-    if replay_buffer.size >= hist_size:
-        batch = replay_buffer.sample_batch(batch_size=1, hist_size=hist_size)
-        history_tensor = torch.FloatTensor(batch['states'][:, :-1, :]).to(device)
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-    else:
-        history_tensor = torch.FloatTensor(list(history)).unsqueeze(0).to(device)
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-    state_new, h_t = gru_encoder.forward(history_tensor, state_tensor, h_t)
-    h_t = h_t.detach()  # 避免梯度累积太长
-
-    action = network.get_action(state_new.cpu().data.numpy().flatten())
+    action = network.get_action(np.array(state))
     action = (action + np.random.normal(0, expl_noise, size=action_dim)).clip(
         -max_action, max_action
     )
@@ -410,7 +410,6 @@ while timestep < max_timesteps:
 
     # Save the tuple in replay buffer
     replay_buffer.add(state, action, reward, done_bool)
-    history.append(state)
 
     # Update the counters
     state = next_state

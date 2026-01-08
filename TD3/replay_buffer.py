@@ -6,10 +6,10 @@ import random
 from collections import deque
 
 import numpy as np
-
+import torch
 
 class ReplayBuffer(object):
-    def __init__(self, buffer_size, n_state, n_action):
+    def __init__(self, buffer_size, n_state, n_action, max_ep):
         """
         The right side of the deque contains the most recent experiences
         """
@@ -18,74 +18,53 @@ class ReplayBuffer(object):
         self.n_action = n_action
         self.cursor = 0
         self.full = False
-
-        self.states = np.zeros((buffer_size, n_state), dtype=np.float32)
-        self.actions = np.zeros((buffer_size, n_action), dtype=np.float32)
-        self.rewards = np.zeros(buffer_size, dtype=np.float32)
-        self.dones = np.zeros(buffer_size, dtype=np.bool_)
+        self.max_ep = max_ep
+        self.episodes = deque(maxlen=buffer_size)
+        self.current_episode = []
 
 
     def add(self, state, action, reward, done_bool):
-        self.states[self.cursor] = state
-        self.actions[self.cursor] = action
-        self.rewards[self.cursor] = reward
-        self.dones[self.cursor] = done_bool
-
-        self.cursor += 1
-        if self.cursor >= self.buffer_size:
-            self.cursor = 0
-            self.full = True
+        self.current_episode.append(
+            (state, action, reward, done_bool)
+        )
 
     @property
     def size(self):
         return self.buffer_size if self.full else self.cursor
 
-    def sample_batch(self, batch_size, hist_size):
-        assert self.size > 0, "Replay memory is empty"
-        assert hist_size >= 1, "History size must be >= 1"
+    def end_episode(self):
+        ep = self.current_episode
+        ep_len = len(ep)
 
-        idx = np.zeros(batch_size, dtype=np.int32)
-        count = 0
+        assert ep_len > 0
 
-        while count < batch_size:
+        # padding
+        if ep_len < self.max_ep:
+            last_state, last_action, _, _ = ep[-1]
+            for _ in range(self.max_ep - ep_len):
+                ep.append((
+                    last_state,
+                    last_action,
+                    0.0,
+                    1.0,
+                ))
 
-            #index是s_t的索引
-            index = np.random.randint(hist_size - 1, self.size - 1)
+        self.episodes.append(ep)
+        self.current_episode = []
 
-            #检查光标是否越界
-            if self.cursor <= index + 1 < self.cursor + hist_size:
-                continue
+    def get_latest_episode(self):
+        assert len(self.episodes) > 0, "ReplayBuffer empty"
 
-            #s_t不能包含中间终止状态
-            if np.any(self.dones[index - (hist_size - 1):index]):
-                continue
+        ep = self.episodes[-1]
 
-            #防止负索引
-            if index - (hist_size - 1) < 0:
-                continue
+        states, actions, rewards, dones = zip(*ep)
 
-            idx[count] = index
-            count += 1
+        o_t = torch.FloatTensor(states).unsqueeze(0)
+        actions = torch.FloatTensor(actions).unsqueeze(0)
+        rewards = torch.FloatTensor(rewards).unsqueeze(0)
+        dones = torch.FloatTensor(dones).unsqueeze(0)
 
-        all_indices = idx.reshape(-1, 1) + np.arange(-(hist_size - 1), 2)
-        states = self.states[all_indices]
-        actions = self.actions[all_indices[:, :-1]]
-        rewards = self.rewards[all_indices[:, :-1]]
-        dones = self.dones[all_indices[:, :-1]]
-
-        # 检查 batch 大小
-        assert idx.shape == (batch_size,)
-        assert states.shape == (batch_size, hist_size + 1, self.n_state)
-        assert actions.shape == (batch_size, hist_size, self.n_action)
-        assert rewards.shape == (batch_size, hist_size)
-        assert dones.shape == (batch_size, hist_size)
-
-        return dict(
-            states=states,
-            actions=actions,
-            rewards=rewards,
-            dones=dones
-        )
+        return o_t, actions, rewards, dones
 
     def empty(self):
         self.cursor = 0
