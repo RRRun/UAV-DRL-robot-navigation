@@ -88,21 +88,25 @@ class Critic(nn.Module):
 
 # GRU Encoder
 class GRUEncoder(nn.Module):
-    def __init__(self, obs_dim, hidden_dim):
+    def __init__(self, obs_dim, hidden_dim, latent_dim):
         super(GRUEncoder, self).__init__()
         self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
 
         self.gru = nn.GRU(
             input_size=obs_dim,
             hidden_size=hidden_dim,
             batch_first=True
         )
+        # Gaussian heads
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logstd = nn.Linear(hidden_dim, latent_dim)
 
     def forward(self, o_t, h_t):
-        o_t = o_t.unsqueeze(1)
-        out, h_next = self.gru(o_t, h_t)
-        out_t = out[:, -1, :]
-        return out_t, h_next
+        z_t, h_next = self.gru(o_t, h_t)
+        mu = self.fc_mu(z_t)
+        logstd = self.fc_logstd(z_t)
+        return mu, logstd, h_next
 
     def init_hidden(self, batch_size, device):
         return torch.zeros(1, batch_size, self.hidden_dim).to(device)
@@ -152,14 +156,14 @@ class TD3(object):
         )
 
     def get_action(self, state):
-        o_t = torch.FloatTensor(state).unsqueeze(0).to(device)
-
+        o_t = torch.FloatTensor(state).to(device)
+        o_t = o_t.unsqueeze(0).unsqueeze(1)
         with torch.no_grad():
             if self.h_t is None:
                 self.h_t = self.encoder.init_hidden(1, o_t.device)
 
-            z_t, self.h_t = self.encoder.forward(o_t, self.h_t)
-            action = self.actor(z_t)
+            z_t, _, self.h_t = self.encoder.forward(o_t, self.h_t)
+            action = self.actor(z_t[:, -1, :])
 
         return action.cpu().numpy().flatten()
 
@@ -185,33 +189,62 @@ class TD3(object):
                 actions,
                 rewards,
                 dones,
-            ) = replay_buffer.get_latest_episode()
+                masks,
+            ) = replay_buffer.sample_batch(batch_size)
             o_t = o_t.to(device)
             actions = actions.to(device)
             rewards = rewards.to(device)
             dones = dones.to(device)
-            action = actions[:, -1]
-            reward = rewards[:, -1].unsqueeze(1)
-            done = dones[:, -1].unsqueeze(1)
+            masks = masks.to(device)
+            B, T, _ = o_t.size()
+            #print("o_t.size():", o_t.size())
 
             # Encoder
-            h_t = self.encoder.init_hidden(o_t.size(0), device)
-            for t in range(max_ep):
-                z_t, h_t = self.encoder.forward(o_t[:, t], h_t.detach())    #嘶，这里到底要不要detach，有点不懂
-                if t == max_ep - 2:
-                    state = z_t.detach()
-                if t == max_ep - 1:
-                    next_state = z_t.detach()
+            h_t = self.encoder.init_hidden(B, device)
+            mu_t, logstd_t, h_next = self.encoder.forward(o_t, h_t)
+            state = mu_t[:, :-1, :]  # [B, T-1, C]
+            next_state = mu_t[:, 1:, :]  # [B, T-1, C]
+            action = actions[:, :-1, :]  # [B, T-1, action_dim]
+            reward = rewards[:, :-1]  # [B, T-1]
+            done = dones[:, :-1]  # [B, T-1]
+
+            # reshape
+            B1, T1, C1 = state.shape
+            state = state.reshape(B1 * T1, C1)
+            next_state = next_state.reshape(B1 * T1, C1)
+            action = action.reshape(B1 * T1, -1)
+            reward = reward.reshape(B1 * T1, 1)
+            done = done.reshape(B1 * T1, 1)
 
             # Decoder
             o_hat = self.decoder.forward(next_state)
-            o_true = o_t[:, -1]
+            o_true = o_t[:, 1:, :]
+            B2, T2, C2 = o_true.shape
+            o_true = o_true.reshape(B2 * T2, C2)
 
             # Reconstruction loss
-            recon_loss = F.mse_loss(o_hat, o_true)
+            mask = masks[:, 1:]
+            recon_mask = mask.reshape(B2 * T2, 1)
+            recon_error = (o_hat - o_true) ** 2
+            recon_error = recon_error * recon_mask
+            recon_loss = recon_error.sum() / (recon_mask.sum() + 1e-8)
+
+            kl = -0.5 * torch.sum(
+                1 + 2 * logstd_t[:, 1:, :] - mu_t[:, 1:, :].pow(2) - (2 * logstd_t[:, 1:, :]).exp(),
+                dim=-1
+            )
+            kl_mask = mask
+            kl_loss = (kl * kl_mask).sum() / (kl_mask.sum() + 1e-8)
+
+            beta = 1e-3
+            total_loss = recon_loss + beta * kl_loss
+
             self.recon_optimizer.zero_grad()
-            recon_loss.backward()
+            total_loss.backward()
             self.recon_optimizer.step()
+
+            state = state.detach()
+            next_state= next_state.detach()
 
             # Obtain the estimated action from the next state by using the actor-target
             next_action = self.actor_target(next_state)
@@ -274,7 +307,7 @@ class TD3(object):
         self.writer.add_scalar("loss", av_loss / iterations, self.iter_count)
         self.writer.add_scalar("Av. Q", av_Q / iterations, self.iter_count)
         self.writer.add_scalar("Max. Q", max_Q, self.iter_count)
-        self.writer.add_scalar("recon_loss", recon_loss.item(), self.iter_count)
+        self.writer.add_scalar("total_loss", total_loss.item(), self.iter_count)
 
     def save(self, filename, directory):
         torch.save(self.actor.state_dict(), "%s/%s_actor.pth" % (directory, filename))
@@ -331,16 +364,17 @@ action_dim = 2
 max_action = 1
 
 # Create encoder and decoder data
-hidden_dim = 64
+hidden_dim = 256
+latent_dim = 64
 hist_size = 10
-gru_encoder = GRUEncoder(state_dim, hidden_dim).to(device)
+gru_encoder = GRUEncoder(state_dim, hidden_dim, latent_dim).to(device)
 h_t = gru_encoder.init_hidden(batch_size=1, device=device)
-mlp_decoder = MLPDecoder(hidden_dim, state_dim).to(device)
+mlp_decoder = MLPDecoder(latent_dim, state_dim).to(device)
 
 # Create the network
-network = TD3(hidden_dim, action_dim, max_action)
+network = TD3(latent_dim, action_dim, max_action)
 # Create a replay buffer
-replay_buffer = ReplayBuffer(buffer_size, n_state=state_dim, n_action=action_dim, max_ep=max_ep)
+replay_buffer = ReplayBuffer(buffer_size, n_state=state_dim, n_action=action_dim, max_ep=max_ep, random_seed=seed)
 if load_model:
     try:
         network.load(file_name, "./pytorch_models")
@@ -367,9 +401,8 @@ while timestep < max_timesteps:
 
     # On termination of episode
     if done:
-        network.h_t = network.encoder.init_hidden(batch_size=1, device=device)
         if timestep != 0:
-            replay_buffer.end_episode() #为了填充到100步(max_ep设置每个episode100步)，不知道写的对不对
+            replay_buffer.end_episode()
             network.train(
                 replay_buffer,
                 1,
@@ -434,8 +467,6 @@ while timestep < max_timesteps:
 
     # Save the tuple in replay buffer
     replay_buffer.add(state, action, reward, done_bool)
-    #这里存在经验池中的数据是state，但是在train里面，encoder之后得到的state其实是上一步state，这样是不是导致时间不错位了
-    #所以我想能不能改成next_state，这样在encoder的时候取倒数第二步就是state，取最后一步就是next_state，但总感觉哪里会受到影响
 
     # Update the counters
     state = next_state
