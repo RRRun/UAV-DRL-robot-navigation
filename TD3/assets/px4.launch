@@ -1,0 +1,39 @@
+<launch>
+  
+  <!-- vehicle pose -->
+    <arg name="x" default="0"/>
+    <arg name="y" default="0"/>
+    <arg name="z" default="0"/>
+    <arg name="R" default="0"/>
+    <arg name="P" default="0"/>
+    <arg name="Y" default="0"/>
+    <!-- vehicle model and world -->
+    <arg name="est" default="ekf2"/>
+    <arg name="robot_name" default="r1"/>
+    <arg name="vehicle" default="iris_rplidar"/>
+    <node pkg="gazebo_ros" type="spawn_model" name="spawn_iris" output="screen"
+      args="-sdf
+            -file $(find mavlink_sitl_gazebo)/models/$(arg vehicle)/$(arg vehicle).sdf
+            -model $(arg robot_name)
+            -x 0 -y 0 -z 1.0"/>
+
+    <!-- MAVROS configs -->
+    <arg name="fcu_url" default="udp://:14540@localhost:14557"/>
+    <arg name="respawn_mavros" default="false"/>
+    <!-- PX4 configs -->
+    <arg name="interactive" default="true"/>
+    <!-- PX4 SITL -->
+    <node pkg="px4" type="px4" name="px4_sitl" output="screen"
+      args="$(find px4)/ROMFS/px4fmu_common -s etc/init.d-posix/rcS"/>
+
+    <!-- MAVROS -->
+    <include file="$(find mavros)/launch/px4.launch">
+        <!-- GCS link is provided by SITL -->
+        <arg name="gcs_url" value=""/>
+        <arg name="fcu_url" value="$(arg fcu_url)"/>
+        <arg name="respawn_mavros" value="$(arg respawn_mavros)"/>
+        <param name="system_id" value="1"/>
+        <param name="component_id" value="1"/>
+    </include>
+  
+</launch>

@@ -80,6 +80,13 @@
       <elevation>0</elevation>
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
+    
+    
+    
+    
+    
+    
+    
     <model name='box'>
       <link name='Wall_11'>
         <pose frame=''>-2.152 1.857 0 0 -0 0</pose>
@@ -89,7 +96,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.5 0.15 1</size>
+              <size>2.5 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -114,7 +121,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.5 0.15 1</size>
+              <size>2.5 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -173,7 +180,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.75 0.15 1</size>
+              <size>2.75 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -198,7 +205,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.75 0.15 1</size>
+              <size>2.75 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -257,7 +264,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.2678 0.15 1</size>
+              <size>1.2678 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -282,7 +289,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.2678 0.15 1</size>
+              <size>1.2678 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -341,7 +348,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.965005 0.15 1</size>
+              <size>0.965005 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -366,7 +373,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.965005 0.15 1</size>
+              <size>0.965005 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -425,7 +432,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.25 0.15 1</size>
+              <size>1.25 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -450,7 +457,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.25 0.15 1</size>
+              <size>1.25 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -509,7 +516,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.965005 0.15 1</size>
+              <size>0.965005 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -534,7 +541,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.965005 0.15 1</size>
+              <size>0.965005 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -593,7 +600,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.97704 0.15 1</size>
+              <size>1.97704 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -618,7 +625,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.97704 0.15 1</size>
+              <size>1.97704 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -677,7 +684,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.06356 0.15 1</size>
+              <size>2.06356 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -702,7 +709,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.06356 0.15 1</size>
+              <size>2.06356 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -761,7 +768,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2 0.15 1</size>
+              <size>2 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -786,7 +793,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2 0.15 1</size>
+              <size>2 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -845,7 +852,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.75 0.15 1</size>
+              <size>1.75 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -870,7 +877,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>1.75 0.15 1</size>
+              <size>1.75 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -929,7 +936,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.5 0.15 1</size>
+              <size>2.5 0.15 2</size>
             </box>
           </geometry>
           <material>
@@ -954,7 +961,7 @@
           <pose frame=''>0 0 0.5 0 -0 0</pose>
           <geometry>
             <box>
-              <size>2.5 0.15 1</size>
+              <size>2.5 0.15 2</size>
             </box>
           </geometry>
           <surface>
@@ -1352,7 +1359,7 @@
           <geometry>
             <mesh>
               <uri>model://fire_hydrant/meshes/fire_hydrant.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 1.5</scale>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1373,7 +1380,7 @@
           <geometry>
             <mesh>
               <uri>model://fire_hydrant/meshes/fire_hydrant.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 1.5</scale>
             </mesh>
           </geometry>
         </visual>
@@ -1644,7 +1651,7 @@
       <static>0</static>
       <link name='link'>
         <collision name='surface'>
-          <pose frame=''>0 0 1 0 -0 0</pose>
+          <pose frame=''>0 0 2 0 -0 0</pose>
           <geometry>
             <box>
               <size>1.5 0.8 0.03</size>
@@ -1668,7 +1675,7 @@
           <max_contacts>10</max_contacts>
         </collision>
         <visual name='visual1'>
-          <pose frame=''>0 0 1 0 -0 0</pose>
+          <pose frame=''>0 0 1.5 0 -0 0</pose>
           <geometry>
             <box>
               <size>1.4 0.8 0.04</size>
@@ -1686,7 +1693,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1708,7 +1715,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <material>
@@ -1723,7 +1730,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1745,7 +1752,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <material>
@@ -1760,7 +1767,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1782,7 +1789,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <material>
@@ -1797,7 +1804,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1819,7 +1826,7 @@
           <geometry>
             <cylinder>
               <radius>0.02</radius>
-              <length>1</length>
+              <length>2</length>
             </cylinder>
           </geometry>
           <material>
@@ -1847,7 +1854,7 @@
       <pose frame=''>-4.34248 -0.532954 0 0 -0 0</pose>
     </model>
     <model name='cardboard_box_0'>
-      <pose frame=''>3.96847 0.977565 0.15 0 -0 0</pose>
+      <pose frame=''>3.96847 0.977565 0.45 0 -0 0</pose>
       <link name='link'>
         <inertial>
           <mass>2</mass>
@@ -1863,7 +1870,7 @@
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.5 0.4 0.3</size>
+              <size>0.5 0.4 0.9</size>
             </box>
           </geometry>
           <surface>
@@ -1889,11 +1896,11 @@
           <max_contacts>10</max_contacts>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0 0 -0.15 0 -0 0</pose>
+          <pose frame=''>0 0 -0.45 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://cardboard_box/meshes/cardboard_box.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 3</scale>
             </mesh>
           </geometry>
         </visual>
@@ -1903,7 +1910,7 @@
       </link>
     </model>
     <model name='cardboard_box_1'>
-      <pose frame=''>0.006438 -3.96264 0.15 0 -0 0</pose>
+      <pose frame=''>0.006438 -3.96264 0.45 0 -0 0</pose>
       <link name='link'>
         <inertial>
           <mass>2</mass>
@@ -1919,7 +1926,7 @@
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.5 0.4 0.3</size>
+              <size>0.5 0.4 0.9</size>
             </box>
           </geometry>
           <surface>
@@ -1945,11 +1952,11 @@
           <max_contacts>10</max_contacts>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0 0 -0.15 0 -0 0</pose>
+          <pose frame=''>0 0 -0.45 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://cardboard_box/meshes/cardboard_box.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 3</scale>
             </mesh>
           </geometry>
         </visual>
@@ -1959,7 +1966,7 @@
       </link>
     </model>
     <model name='cardboard_box_2'>
-      <pose frame=''>-4.88373 2.96722 0.15 0 -0 0</pose>
+      <pose frame=''>-4.88373 2.96722 0.45 0 -0 0</pose>
       <link name='link'>
         <inertial>
           <mass>2</mass>
@@ -1975,7 +1982,7 @@
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.5 0.4 0.3</size>
+              <size>0.5 0.4 0.9</size>
             </box>
           </geometry>
           <surface>
@@ -2001,11 +2008,11 @@
           <max_contacts>10</max_contacts>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0 0 -0.15 0 -0 0</pose>
+          <pose frame=''>0 0 -0.45 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://cardboard_box/meshes/cardboard_box.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 3</scale>
             </mesh>
           </geometry>
         </visual>
@@ -2015,7 +2022,7 @@
       </link>
     </model>
     <model name='cardboard_box_3'>
-      <pose frame=''>-0.0158 3.98725 0.15 0 -0 0</pose>
+      <pose frame=''>-0.0158 3.98725 0.45 0 -0 0</pose>
       <link name='link'>
         <inertial>
           <mass>2</mass>
@@ -2031,7 +2038,7 @@
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.5 0.4 0.3</size>
+              <size>0.5 0.4 0.9</size>
             </box>
           </geometry>
           <surface>
@@ -2057,11 +2064,11 @@
           <max_contacts>10</max_contacts>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0 0 -0.15 0 -0 0</pose>
+          <pose frame=''>0 0 -0.45 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://cardboard_box/meshes/cardboard_box.dae</uri>
-              <scale>1 1 1</scale>
+              <scale>1 1 3</scale>
             </mesh>
           </geometry>
         </visual>

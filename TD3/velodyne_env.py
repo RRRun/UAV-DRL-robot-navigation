@@ -9,16 +9,19 @@ import numpy as np
 import rospy
 import sensor_msgs.point_cloud2 as pc2
 from gazebo_msgs.msg import ModelState
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 from squaternion import Quaternion
 from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+from sensor_msgs.msg import LaserScan
+from mavros_msgs.msg import State
+from mavros_msgs.srv import CommandBool, SetMode
 
 GOAL_REACHED_DIST = 0.3
-COLLISION_DIST = 0.35
+COLLISION_DIST = 0.2
 TIME_DELTA = 0.1
 
 
@@ -72,11 +75,16 @@ class GazeboEnv:
 
         self.goal_x = 1
         self.goal_y = 0.0
+        self.goal_z = 1.0
+        self.kp_z = 0.8
 
         self.upper = 5.0
         self.lower = -5.0
-        self.velodyne_data = np.ones(self.environment_dim) * 10
+        # self.velodyne_data = np.ones(self.environment_dim) * 10
+        self.laser_data = np.ones(self.environment_dim) * 10.0
         self.last_odom = None
+        self.current_state = State()
+        self.connected = False
 
         self.set_self_state = ModelState()
         self.set_self_state.model_name = "r1"
@@ -113,7 +121,7 @@ class GazeboEnv:
         print("Gazebo launched!")
 
         # Set up the ROS publishers and subscribers
-        self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
+        self.vel_pub = rospy.Publisher("/mavros/setpoint_velocity/cmd_vel_unstamped", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
         )
@@ -123,30 +131,103 @@ class GazeboEnv:
         self.publisher = rospy.Publisher("goal_point", MarkerArray, queue_size=3)
         self.publisher2 = rospy.Publisher("linear_velocity", MarkerArray, queue_size=1)
         self.publisher3 = rospy.Publisher("angular_velocity", MarkerArray, queue_size=1)
-        self.velodyne = rospy.Subscriber(
-            "/velodyne_points", PointCloud2, self.velodyne_callback, queue_size=1
-        )
-        self.odom = rospy.Subscriber(
-            "/r1/odom", Odometry, self.odom_callback, queue_size=1
-        )
+        # self.velodyne = rospy.Subscriber(
+        #     "/velodyne_points", PointCloud2, self.velodyne_callback, queue_size=1
+        # )
+        self.laser = rospy.Subscriber("/laser/scan",LaserScan,self.laser_callback)
+        self.pos_pub = rospy.Publisher('mavros/setpoint_position/local', PoseStamped, queue_size=1)
+        self.odom = rospy.Subscriber("/mavros/local_position/odom", Odometry, self.odom_callback, queue_size=1)
+        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_callback)
+        self.arming_srv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
+        self.set_mode_srv = rospy.ServiceProxy("/mavros/set_mode", SetMode)
+
+    def takeoff(self, altitude=1.0):
+        rospy.loginfo("Preparing OFFBOARD takeoff...")
+        rate = rospy.Rate(20)
+
+        # 1. 等 FCU 连接
+        while not self.current_state.connected:
+            rospy.loginfo_throttle(1, "Waiting for FCU connection...")
+            rate.sleep()
+
+        rospy.loginfo("FCU connected")
+
+        setpoint = PoseStamped()
+        setpoint.pose.position.x = 0
+        setpoint.pose.position.y = 0
+        setpoint.pose.position.z = altitude
+        setpoint.pose.orientation.w = 1.0
+        for _ in range(100):
+            self.pos_pub.publish(setpoint)
+            rate.sleep()
+
+        # 切 OFFBOARD
+        rospy.wait_for_service('/mavros/set_mode')
+        set_mode = rospy.ServiceProxy('/mavros/set_mode', SetMode)
+        set_mode(custom_mode='OFFBOARD')
+        rospy.loginfo("OFFBOARD mode set")
+
+        # 解锁
+        rospy.wait_for_service('/mavros/cmd/arming')
+        arming_srv = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
+        arming_srv(True)
+        rospy.loginfo("Armed")
+
+        # 持续保持高度
+        # while not rospy.is_shutdown():
+        #     self.pos_pub.publish(setpoint)
+        #     if abs(altitude - self.last_odom.pose.pose.position.z) < 0.1:
+        #         rospy.loginfo("Reached target height %.2f m", self.last_odom.pose.pose.position.z)
+        #         break
+        #     rate.sleep()
+
+        for _ in range(100):
+            vel_cmd = Twist()
+            current_z = self.last_odom.pose.pose.position.z
+            vel_cmd.linear.z = self.kp_z * (altitude - current_z)
+            vel_cmd.linear.z = 2.0
+            self.vel_pub.publish(vel_cmd)
+            rate.sleep()
+        print("Reached target height %.2f m" % current_z)
 
     # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
     # range as state representation
-    def velodyne_callback(self, v):
-        data = list(pc2.read_points(v, skip_nans=False, field_names=("x", "y", "z")))
-        self.velodyne_data = np.ones(self.environment_dim) * 10
-        for i in range(len(data)):
-            if data[i][2] > -0.2:
-                dot = data[i][0] * 1 + data[i][1] * 0
-                mag1 = math.sqrt(math.pow(data[i][0], 2) + math.pow(data[i][1], 2))
-                mag2 = math.sqrt(math.pow(1, 2) + math.pow(0, 2))
-                beta = math.acos(dot / (mag1 * mag2)) * np.sign(data[i][1])
-                dist = math.sqrt(data[i][0] ** 2 + data[i][1] ** 2 + data[i][2] ** 2)
+    # def velodyne_callback(self, v):
+    #     data = list(pc2.read_points(v, skip_nans=False, field_names=("x", "y", "z")))
+    #     self.velodyne_data = np.ones(self.environment_dim) * 10
+    #     for i in range(len(data)):
+    #         if data[i][2] > -0.2:
+    #             dot = data[i][0] * 1 + data[i][1] * 0
+    #             mag1 = math.sqrt(math.pow(data[i][0], 2) + math.pow(data[i][1], 2))
+    #             mag2 = math.sqrt(math.pow(1, 2) + math.pow(0, 2))
+    #             beta = math.acos(dot / (mag1 * mag2)) * np.sign(data[i][1])
+    #             dist = math.sqrt(data[i][0] ** 2 + data[i][1] ** 2 + data[i][2] ** 2)
+    #
+    #             for j in range(len(self.gaps)):
+    #                 if self.gaps[j][0] <= beta < self.gaps[j][1]:
+    #                     self.velodyne_data[j] = min(self.velodyne_data[j], dist)
+    #                     break
 
-                for j in range(len(self.gaps)):
-                    if self.gaps[j][0] <= beta < self.gaps[j][1]:
-                        self.velodyne_data[j] = min(self.velodyne_data[j], dist)
-                        break
+    def laser_callback(self, msg):
+        ranges = np.array(msg.ranges)
+        ranges[np.isinf(ranges)] = 10.0
+        ranges[np.isnan(ranges)] = 10.0
+
+        n = len(ranges)
+        step = n // self.environment_dim
+
+        laser_processed = []
+        for i in range(self.environment_dim):
+            segment = ranges[i * step:(i + 1) * step]
+            laser_processed.append(np.min(segment))
+
+        self.laser_data = np.array(laser_processed)
+
+    def state_callback(self, msg):
+        self.current_state = msg
+        if not self.connected and msg.connected:
+            rospy.loginfo("Connect to PX4 !")
+        self.connected = msg.connected
 
     def odom_callback(self, od_data):
         self.last_odom = od_data
@@ -157,7 +238,9 @@ class GazeboEnv:
 
         # Publish the robot action
         vel_cmd = Twist()
-        vel_cmd.linear.x = action[0]
+        current_z = self.last_odom.pose.pose.position.z
+        vel_cmd.linear.z = self.kp_z * (self.goal_z - current_z)
+        vel_cmd.linear.x = action[0] / 2.0
         vel_cmd.angular.z = action[1]
         self.vel_pub.publish(vel_cmd)
         self.publish_markers(action)
@@ -179,9 +262,9 @@ class GazeboEnv:
             print("/gazebo/pause_physics service call failed")
 
         # read velodyne laser state
-        done, collision, min_laser = self.observe_collision(self.velodyne_data)
-        v_state = []
-        v_state[:] = self.velodyne_data[:]
+
+        done, collision, min_laser = self.observe_collision(self.laser_data)
+        v_state = self.laser_data.tolist()
         laser_state = [v_state]
 
         # Calculate robot heading from odometry data
@@ -245,16 +328,20 @@ class GazeboEnv:
         quaternion = Quaternion.from_euler(0.0, 0.0, angle)
         object_state = self.set_self_state
 
-        x = 0
-        y = 0
-        position_ok = False
-        while not position_ok:
-            x = np.random.uniform(-4.5, 4.5)
-            y = np.random.uniform(-4.5, 4.5)
-            position_ok = check_pos(x, y)
+        # x = 0
+        # y = 0
+        # z = 1.0
+        # position_ok = False
+        # while not position_ok:
+        #     x = np.random.uniform(-4.5, 4.5)
+        #     y = np.random.uniform(-4.5, 4.5)
+        #     position_ok = check_pos(x, y)
+        x = self.last_odom.pose.pose.position.x
+        y = self.last_odom.pose.pose.position.y
+        z = self.last_odom.pose.pose.position.z
         object_state.pose.position.x = x
         object_state.pose.position.y = y
-        # object_state.pose.position.z = 0.
+        object_state.pose.position.z = z
         object_state.pose.orientation.x = quaternion.x
         object_state.pose.orientation.y = quaternion.y
         object_state.pose.orientation.z = quaternion.z
@@ -283,8 +370,7 @@ class GazeboEnv:
             self.pause()
         except (rospy.ServiceException) as e:
             print("/gazebo/pause_physics service call failed")
-        v_state = []
-        v_state[:] = self.velodyne_data[:]
+        v_state = self.laser_data.tolist()
         laser_state = [v_state]
 
         distance = np.linalg.norm(
@@ -315,6 +401,19 @@ class GazeboEnv:
 
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
+
+
+        rate = rospy.Rate(20)
+        for _ in range(100):
+            vel_cmd = Twist()
+            current_z = self.last_odom.pose.pose.position.z
+            vel_cmd.linear.z = self.kp_z * (self.goal_z - current_z)
+            vel_cmd.linear.x = 0.0
+            vel_cmd.angular.z = 0.0
+            self.vel_pub.publish(vel_cmd)
+            rate.sleep()
+
+
         return state
 
     def change_goal(self):

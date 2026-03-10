@@ -395,6 +395,10 @@ epoch = 1
 count_rand_actions = 0
 random_action = []
 
+# takeoff
+print("Taking off UAV")
+env.takeoff(altitude=1.0)
+time.sleep(2.0)
 
 # Begin the training loop
 while timestep < max_timesteps:

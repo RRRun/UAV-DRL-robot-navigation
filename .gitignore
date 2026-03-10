@@ -1,0 +1,8 @@
+**/build_isolated/
+**/devel_isolated/
+**/cmake-build-debug/
+**/.catkin_workspace/
+**/.idea/
+**/.vscode/
+**/__pycache__/
+
